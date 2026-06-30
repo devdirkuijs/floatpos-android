@@ -60,8 +60,10 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/floatpos-release.jks"
-          echo "keystore size: $(wc -c < "$RUNNER_TEMP/floatpos-release.jks") bytes"
+          CLEAN=$(printf '%s' "$KEYSTORE_BASE64" | tr -cd 'A-Za-z0-9+/=')
+          echo "cleaned base64 length: ${#CLEAN}  (should be 3624)"
+          printf '%s' "$CLEAN" | base64 -d > "$RUNNER_TEMP/floatpos-release.jks"
+          echo "keystore size: $(wc -c < "$RUNNER_TEMP/floatpos-release.jks") bytes  (should be 2716)"
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           echo "Using build-tools: $BT"
           UNSIGNED=$(find android/app/build/outputs/apk/release -name "*-unsigned.apk" | head -1)
@@ -85,4 +87,4 @@ jobs:
         with:
           name: FloatPOS-release-apk
           path: floatpos.apk
-          if-no-files-found: error
+          if-no-files-found: error 
