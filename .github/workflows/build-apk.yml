@@ -38,6 +38,13 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: Add camera permission (for the in-app barcode scanner)
+        run: |
+          MF=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />#' "$MF"
+          echo "---- manifest permissions after patch ----"
+          grep -n "uses-permission\|uses-feature" "$MF"
+
       - name: Build debug APK
         run: |
           cd android
