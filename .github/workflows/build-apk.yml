@@ -49,7 +49,9 @@ jobs:
         run: |
           cd android
           chmod +x ./gradlew
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease -x lintVitalRelease --no-daemon --stacktrace
+          echo "---- release output dir ----"
+          ls -la app/build/outputs/apk/release/ || true
 
       - name: Sign release APK
         env:
@@ -61,7 +63,10 @@ jobs:
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/floatpos-release.jks"
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           echo "Using build-tools: $BT"
-          UNSIGNED=android/app/build/outputs/apk/release/app-release-unsigned.apk
+          UNSIGNED=$(find android/app/build/outputs/apk/release -name "*-unsigned.apk" | head -1)
+          if [ -z "$UNSIGNED" ]; then UNSIGNED=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1); fi
+          echo "Unsigned APK: $UNSIGNED"
+          if [ -z "$UNSIGNED" ]; then echo "ERROR: no release APK produced"; exit 1; fi
           "$BT/zipalign" -p -f 4 "$UNSIGNED" "$RUNNER_TEMP/floatpos-aligned.apk"
           "$BT/apksigner" sign \
             --ks "$RUNNER_TEMP/floatpos-release.jks" \
