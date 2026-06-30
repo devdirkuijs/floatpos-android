@@ -1,0 +1,17 @@
+{
+  "name": "floatpos-android",
+  "version": "1.0.0",
+  "description": "FloatPOS native Android shell (Capacitor) - host-loads https://floatpos.co.za",
+  "private": true,
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/android": "^8.4.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/assets": "^3.0.5"
+  }
+}
