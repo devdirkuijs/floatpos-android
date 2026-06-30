@@ -35,7 +35,6 @@ jobs:
       - name: Generate app icon & splash
         run: npx @capacitor/assets generate --android --splashBackgroundColor "#0b1730" --splashBackgroundColorDark "#0b1730"
 
-
       - name: Sync Capacitor
         run: npx cap sync android
 
@@ -46,15 +45,38 @@ jobs:
           echo "---- manifest permissions after patch ----"
           grep -n "uses-permission\|uses-feature" "$MF"
 
-      - name: Build debug APK
+      - name: Build release APK (unsigned)
         run: |
           cd android
           chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleRelease --no-daemon
 
-      - name: Upload APK artifact
+      - name: Sign release APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/floatpos-release.jks"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          echo "Using build-tools: $BT"
+          UNSIGNED=android/app/build/outputs/apk/release/app-release-unsigned.apk
+          "$BT/zipalign" -p -f 4 "$UNSIGNED" "$RUNNER_TEMP/floatpos-aligned.apk"
+          "$BT/apksigner" sign \
+            --ks "$RUNNER_TEMP/floatpos-release.jks" \
+            --ks-pass env:KEYSTORE_PASSWORD \
+            --ks-key-alias "$KEY_ALIAS" \
+            --key-pass env:KEY_PASSWORD \
+            --out floatpos.apk \
+            "$RUNNER_TEMP/floatpos-aligned.apk"
+          "$BT/apksigner" verify --verbose floatpos.apk
+          rm -f "$RUNNER_TEMP/floatpos-release.jks"
+          echo "---- signed APK ----"; ls -la floatpos.apk
+
+      - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: FloatPOS-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: FloatPOS-release-apk
+          path: floatpos.apk
           if-no-files-found: error
