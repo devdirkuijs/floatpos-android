@@ -60,7 +60,8 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/floatpos-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/floatpos-release.jks"
+          echo "keystore size: $(wc -c < "$RUNNER_TEMP/floatpos-release.jks") bytes"
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           echo "Using build-tools: $BT"
           UNSIGNED=$(find android/app/build/outputs/apk/release -name "*-unsigned.apk" | head -1)
