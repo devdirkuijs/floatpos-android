@@ -33,7 +33,8 @@ jobs:
         run: npx cap add android
 
       - name: Generate app icon & splash
-        run: npx @capacitor/assets generate --android
+        run: npx @capacitor/assets generate --android --splashBackgroundColor "#0b1730" --splashBackgroundColorDark "#0b1730"
+
 
       - name: Sync Capacitor
         run: npx cap sync android
