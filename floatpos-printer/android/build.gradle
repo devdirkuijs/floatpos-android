@@ -1,11 +1,5 @@
 ext {
-    junitVersion            = project.hasProperty('junitVersion')            ? rootProject.ext.junitVersion            : '4.13.2'
     androidxAppCompatVersion = project.hasProperty('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.7.0'
-}
-
-buildscript {
-    repositories { google(); mavenCentral() }
-    dependencies { classpath 'com.android.tools.build:gradle:8.7.2' }
 }
 
 apply plugin: 'com.android.library'
@@ -27,13 +21,15 @@ android {
 repositories {
     google()
     mavenCentral()
-    flatDir { dirs 'libs' }
 }
 
 dependencies {
     implementation project(':capacitor-android')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
-    // The MobiIoT SDK. Bundled here so it survives `npx cap add android`,
-    // which regenerates the whole android/ folder on every CI build.
-    implementation fileTree(dir: 'libs', include: ['*.aar', '*.jar'])
+    // compileOnly: the plugin compiles against the MobiIoT SDK but does not
+    // bundle it. A library module is not allowed to package a local .aar into
+    // its own .aar -- the classes would be silently dropped. The SDK is added
+    // to the APP module by the workflow instead, where local .aar files are
+    // supported, and it is present at runtime from there.
+    compileOnly fileTree(dir: '../../floatpos-printer/android/libs', include: ['*.aar', '*.jar'])
 }
