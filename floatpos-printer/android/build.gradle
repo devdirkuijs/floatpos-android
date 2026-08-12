@@ -1,0 +1,39 @@
+ext {
+    junitVersion            = project.hasProperty('junitVersion')            ? rootProject.ext.junitVersion            : '4.13.2'
+    androidxAppCompatVersion = project.hasProperty('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.7.0'
+}
+
+buildscript {
+    repositories { google(); mavenCentral() }
+    dependencies { classpath 'com.android.tools.build:gradle:8.7.2' }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    namespace "za.co.floatpos.printer"
+    compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 35
+    defaultConfig {
+        minSdk project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 23
+        targetSdk project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 35
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+    lintOptions { abortOnError false }
+}
+
+repositories {
+    google()
+    mavenCentral()
+    flatDir { dirs 'libs' }
+}
+
+dependencies {
+    implementation project(':capacitor-android')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    // The MobiIoT SDK. Bundled here so it survives `npx cap add android`,
+    // which regenerates the whole android/ folder on every CI build.
+    implementation fileTree(dir: 'libs', include: ['*.aar', '*.jar'])
+}

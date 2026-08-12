@@ -1,0 +1,17 @@
+{
+  "name": "floatpos-printer",
+  "version": "1.0.0",
+  "description": "FloatPOS built-in thermal printer (MobiIoT / MobiPrint 5)",
+  "main": "dist/plugin.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "files": ["android/", "dist/", "FloatposPrinter.podspec"],
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  }
+}

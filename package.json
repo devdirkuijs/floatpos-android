@@ -6,9 +6,10 @@
   "scripts": {
     "sync": "cap sync android"
   },
-  "dependencies": {
+ "dependencies": {
     "@capacitor/core": "^8.4.1",
-    "@capacitor/android": "^8.4.1"
+    "@capacitor/android": "^8.4.1",
+    "floatpos-printer": "file:./floatpos-printer"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.4.1",
