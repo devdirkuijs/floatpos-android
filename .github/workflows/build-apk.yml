@@ -1,5 +1,4 @@
 name: Build FloatPOS APK
-
 on:
   push:
     branches: [ main ]
@@ -29,6 +28,23 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      # ── NEW ────────────────────────────────────────────────────────────
+      # The printer plugin has to be an npm dependency for `cap sync` to
+      # register it. Without this the plugin simply is not in the build --
+      # which is why the APK Trinity analysed had only INTERNET and CAMERA.
+      #
+      # Adjust the path if the plugin folder sits elsewhere in the repo.
+      - name: Install the FloatPOS printer plugin
+        run: |
+          if [ -d "./floatpos-printer" ]; then
+            npm install ./floatpos-printer
+            echo "printer plugin installed from ./floatpos-printer"
+          else
+            echo "ERROR: ./floatpos-printer not found in the repo."
+            echo "Contents of repo root:"; ls -la
+            exit 1
+          fi
+
       - name: Add Android platform
         run: npx cap add android
 
@@ -37,6 +53,38 @@ jobs:
 
       - name: Sync Capacitor
         run: npx cap sync android
+
+      # ── NEW ────────────────────────────────────────────────────────────
+      # The MobiPrint SDK is a local .aar, not an npm package, so Gradle
+      # cannot resolve it unless it is physically in app/libs. `cap add
+      # android` rebuilds that folder from scratch on every run, so this has
+      # to happen AFTER the platform is added, every time.
+      - name: Copy MobiPrint SDK into app/libs
+        run: |
+          AAR=$(find . -name "mp-mobiiot-sdk-*.aar" -not -path "./android/*" | head -1)
+          if [ -z "$AAR" ]; then
+            echo "ERROR: mp-mobiiot-sdk-*.aar not found in the repo."
+            exit 1
+          fi
+          mkdir -p android/app/libs
+          cp "$AAR" android/app/libs/
+          echo "copied: $AAR  ($(wc -c < "$AAR") bytes)"
+          ls -la android/app/libs/
+
+      # ── NEW ────────────────────────────────────────────────────────────
+      # versionCode is how an MDM decides a build is newer. Capacitor
+      # defaults it to 1 and `cap add android` resets it every run, so every
+      # build shipped as version 1 -- and Trinity's TMS would never have seen
+      # an update. The run number always increases, so it is a safe source.
+      - name: Set versionCode and versionName
+        run: |
+          GRADLE=android/app/build.gradle
+          VC=${{ github.run_number }}
+          VN="1.0.$VC"
+          sed -i "s/versionCode .*/versionCode $VC/" "$GRADLE"
+          sed -i "s/versionName .*/versionName \"$VN\"/" "$GRADLE"
+          echo "---- version after patch ----"
+          grep -n "versionCode\|versionName" "$GRADLE"
 
       - name: Add camera permission (for the in-app barcode scanner)
         run: |
@@ -82,9 +130,32 @@ jobs:
           rm -f "$RUNNER_TEMP/floatpos-release.jks"
           echo "---- signed APK ----"; ls -la floatpos.apk
 
+      # ── NEW ────────────────────────────────────────────────────────────
+      # Fail here rather than in Trinity's MDM queue. If the printer class is
+      # not in the APK, the build is not the one we think it is, and finding
+      # that out now costs a minute instead of an approval cycle.
+      - name: Verify the printer plugin actually made it in
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          echo "---- manifest summary ----"
+          "$BT/aapt2" dump badging floatpos.apk | grep -E "package:|versionCode|versionName|uses-permission" || true
+          echo "---- looking for the printer plugin ----"
+          unzip -l floatpos.apk | grep -i "classes" || true
+          if unzip -p floatpos.apk classes.dex classes2.dex classes3.dex 2>/dev/null | strings | grep -qi "FloatPrinterPlugin"; then
+            echo "OK: FloatPrinterPlugin found in the APK"
+          else
+            echo "ERROR: FloatPrinterPlugin is NOT in this APK."
+            echo "The plugin did not register. Do not ship this build."
+            exit 1
+          fi
+          echo "---- hashes to send ----"
+          echo "size:   $(wc -c < floatpos.apk) bytes"
+          echo "md5:    $(md5sum floatpos.apk | cut -d' ' -f1)"
+          echo "sha256: $(sha256sum floatpos.apk | cut -d' ' -f1)"
+
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
           name: FloatPOS-release-apk
           path: floatpos.apk
-          if-no-files-found: error 
+          if-no-files-found: error
