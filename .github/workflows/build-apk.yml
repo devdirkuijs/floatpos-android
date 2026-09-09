@@ -55,12 +55,13 @@ jobs:
         run: npx cap sync android
 
       # ── NEW ────────────────────────────────────────────────────────────
-      # The MobiPrint SDK is a local .aar, not an npm package, so Gradle
-      # cannot resolve it unless it is physically in app/libs. `cap add
-      # android` rebuilds that folder from scratch on every run, so this has
-      # to happen AFTER the platform is added, every time.
-      - name: Copy MobiPrint SDK into app/libs
+      # The MobiPrint SDK is a local .aar. Capacitor's app/build.gradle only
+      # has `fileTree(include: ['*.jar'], dir: 'libs')`, so copying the .aar
+      # into app/libs never put MobiiotAPI on the runtime classpath. Patch
+      # fileTree to include *.aar so AGP unpacks the AAR (and its nested jars).
+      - name: Install MobiPrint SDK into the app module
         run: |
+          set -e
           AAR=$(find . -name "mp-mobiiot-sdk-*.aar" -not -path "./android/*" | head -1)
           if [ -z "$AAR" ]; then
             echo "ERROR: mp-mobiiot-sdk-*.aar not found in the repo."
@@ -68,8 +69,35 @@ jobs:
           fi
           mkdir -p android/app/libs
           cp "$AAR" android/app/libs/
-          echo "copied: $AAR  ($(wc -c < "$AAR") bytes)"
+          echo "copied $AAR ($(wc -c < "$AAR") bytes)"
+          echo "---- android/app/libs ----"
           ls -la android/app/libs/
+          GRADLE=android/app/build.gradle
+          if [ -f "$GRADLE" ]; then
+            python3 - <<'PY'
+from pathlib import Path
+p = Path("android/app/build.gradle")
+text = p.read_text()
+old = "implementation fileTree(include: ['*.jar'], dir: 'libs')"
+new = "implementation fileTree(include: ['*.jar', '*.aar'], dir: 'libs')"
+if old in text:
+    p.write_text(text.replace(old, new, 1))
+    print("patched app/build.gradle fileTree to include AARs")
+elif "fileTree" in text:
+    print("WARNING: unexpected fileTree in app/build.gradle")
+    for i, line in enumerate(text.splitlines(), 1):
+        if "fileTree" in line:
+            print(f"  {i}: {line}")
+else:
+    print("WARNING: no fileTree found in app/build.gradle")
+PY
+          else
+            echo "ERROR: $GRADLE missing after cap add"
+            exit 1
+          fi
+          echo "---- fileTree line ----"
+          grep -n "fileTree" "$GRADLE" || true
+
 
       # ── NEW ────────────────────────────────────────────────────────────
       # versionCode is how an MDM decides a build is newer. Capacitor
@@ -138,14 +166,17 @@ jobs:
         run: |
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           echo "---- manifest summary ----"
-          "$BT/aapt2" dump badging floatpos.apk | grep -E "package:|versionCode|versionName|uses-permission" || true
-          echo "---- looking for the printer plugin ----"
+          "$BT/aapt2" dump xmltree floatpos.apk --file AndroidManifest.xml | grep -E "sagereal|printraw|START_PRINTER|CONN_PRINTIO|queries|package" || true
+          echo "---- looking for printer classes in dex ----"
           unzip -l floatpos.apk | grep -i "classes" || true
-          if unzip -p floatpos.apk classes.dex classes2.dex classes3.dex 2>/dev/null | strings | grep -qi "FloatPrinterPlugin"; then
-            echo "OK: FloatPrinterPlugin found in the APK"
-          else
-            echo "ERROR: FloatPrinterPlugin is NOT in this APK."
-            echo "The plugin did not register. Do not ship this build."
+          STRINGS=$(unzip -p floatpos.apk classes.dex classes2.dex classes3.dex classes4.dex classes5.dex classes6.dex classes7.dex classes8.dex 2>/dev/null | strings || true)
+          fail=0
+          echo "$STRINGS" | grep -q "FloatPrinterPlugin" && echo "OK: FloatPrinterPlugin" || { echo "MISSING: FloatPrinterPlugin"; fail=1; }
+          echo "$STRINGS" | grep -q "MobiiotAPI" && echo "OK: MobiiotAPI" || { echo "MISSING: MobiiotAPI (SDK not in APK)"; fail=1; }
+          echo "$STRINGS" | grep -q "printESCPOS" && echo "OK: printESCPOS" || { echo "MISSING: printESCPOS"; fail=1; }
+          echo "$STRINGS" | grep -q "PrintIOInterface" && echo "OK: PrintIOInterface" || { echo "MISSING: PrintIOInterface"; fail=1; }
+          if [ "$fail" -ne 0 ]; then
+            echo "ERROR: printer runtime is incomplete. Do not ship this build."
             exit 1
           fi
           echo "---- hashes to send ----"

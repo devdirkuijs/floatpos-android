@@ -3,68 +3,57 @@
 A thin Capacitor wrapper that turns the live FloatPOS web app into an
 installable Android app. It does **not** contain a copy of FloatPOS — the app
 loads **https://floatpos.co.za** in a native WebView, so every normal FloatPOS
-deploy (commit -> Netlify) updates the Android app automatically too. The
-build-gate still governs every device.
+deploy (commit → Netlify) updates the Android app automatically too.
 
 - **App name:** FloatPOS
-- **Package id:** za.co.floatpos.app
+- **Package id:** `za.co.floatpos.app`
 - **Loads:** https://floatpos.co.za
-- **Capacitor:** 8.x  ·  builds on GitHub (no Android Studio needed)
+- **Capacitor:** 8.x · builds on GitHub
+- **Built-in printer:** MobiPrint 5 / MobiIoT SDK 4.1.1 (`floatpos-printer`)
 
 ---
 
-## Build the APK (all in the browser — your Mac does nothing)
+## Why the MobiPrint 5 was silent
 
-**1. Create the repo**
-- GitHub -> New repository -> name it `floatpos-android` -> **Private** -> Create.
+The 58mm head is **not** Bluetooth and **not** `window.print()`. FloatPOS already
+had a Capacitor plugin (`FloatPrinterPlugin`) that calls `CsPrinter.printESCPOS()`.
+Three bugs in that path meant the till never moved paper:
 
-**2. Upload these files**
-- In the new repo: **Add file -> Upload files**.
-- Drag in everything from this folder, keeping the structure:
-  `capacitor.config.json`, `package.json`, `.gitignore`, `README.md`,
-  the `assets/` folder, the `www/` folder, and the `.github/` folder.
-- If the `.github` folder won't drag (some browsers hide dot-folders), create it
-  by hand: **Add file -> Create new file**, type the name
-  `.github/workflows/build-apk.yml`, and paste the contents of that file.
-- **Commit** straight to `main`.
+1. **SDK not in the APK.** The workflow copied `mp-mobiiot-sdk-4.1.1.aar` into
+   `android/app/libs`, but Capacitor’s app Gradle only includes `*.jar`.
+   `FloatPrinterPlugin` compiled (`compileOnly`) and the CI check passed because
+   it only searched for that class. On the device `MobiiotAPI.init()` threw
+   `ClassNotFoundException`, `isAvailable()` was false, and the web app fell
+   back to the browser print dialog.
+2. **Wrong `<queries>` actions** on Android 14. The plugin declared the AIDL
+   *interface* names (`com.sagereal.printer.PrinterInterface`) instead of the
+   real bind actions (`sagereal.intent.action.START_PRINTER_SERVICE_AIDL` and
+   `sagereal.intent.action.CONN_PRINTIO_SERVICE_AIDL`). PrintIO’s bind then
+   resolved 0 services, `MobiiotAPI.init()` could NPE, and ESC/POS went nowhere.
+3. **Print before bind.** `MobiiotAPI.init()` is asynchronous. The first receipt
+   hit a null stub: the SDK logged `service printer is KO`, `getPaperStatus()`
+   returned false (surfaced as “out of paper”), and `printESCPOS()` no-op’d
+   while still returning `{ ok: true }`.
 
-**3. The build runs itself**
-- Go to the **Actions** tab. A run called **Build FloatPOS APK** starts on the
-  commit. First run takes ~4-6 min (it installs the toolchain in the cloud).
-- Green tick = done. (Red = open the run, read the failed step, send it to me.)
-
-**4. Download the APK**
-- Open the finished run -> scroll to **Artifacts** -> download
-  **FloatPOS-debug-apk**.
-- Unzip it -> you get `app-debug.apk`.
-
-**5. Install on an Android device** (MatePad, phone, later a MobiPrint)
-- Copy `app-debug.apk` onto the device.
-- Settings may ask to allow **"install unknown apps"** for your file manager —
-  allow it.
-- Tap the APK -> Install -> open **FloatPOS**. It should boot straight into the
-  live till.
+Receipts use **PrintIO** (`transmitNew`), not SageReal `printText`. A successful
+`printText` self-test does not prove ESC/POS receipts will print.
 
 ---
 
-## Re-running the build later
-- **Actions -> Build FloatPOS APK -> Run workflow** (the `workflow_dispatch`
-  button) rebuilds any time, or just push any change.
+## Build the APK
+
+Push to `main` on **github.com/devdirkuijs/floatpos-android** (or run
+**Actions → Build FloatPOS APK → Run workflow**). Download the
+**FloatPOS-release-apk** artifact and sideload `floatpos.apk` onto the
+MobiPrint 5.
+
+The CI verify step now fails the build if `MobiiotAPI` / `printESCPOS` are
+missing from the APK, not only `FloatPrinterPlugin`.
+
+---
 
 ## When do I need to rebuild the APK?
-- **Almost never.** Day-to-day FloatPOS changes ship the normal way (Netlify) and
-  the app picks them up on next load — no new APK.
-- Only rebuild for: app **name**, **icon/splash**, the **URL** it loads, or when
-  we add a native feature (e.g. Phase 2 camera scanning).
 
-## What's next (Phase 2)
-- Camera barcode scanning, wired to the existing `handleScannedBarcode()` so a
-  scan behaves exactly like the manual barcode field. That phase adds one
-  Capacitor plugin here + a small dormant hook in FloatPOS.
-
-## Notes
-- This produces a **debug** APK (fine for sideloading + piloting). A signed
-  **release** APK (for Play Store or wide distribution) is a later step — needs a
-  signing key, which we'll set up when you're ready.
-- First launch needs internet (to cache the app). After that the FloatPOS
-  service worker handles offline trading as usual.
+- Day-to-day FloatPOS UI changes ship via Netlify. No new APK.
+- Rebuild for: app name, icon/splash, the URL it loads, or native plugins
+  (printer, camera).

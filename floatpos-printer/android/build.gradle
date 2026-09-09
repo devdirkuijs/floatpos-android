@@ -26,10 +26,10 @@ repositories {
 dependencies {
     implementation project(':capacitor-android')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
-    // compileOnly: the plugin compiles against the MobiIoT SDK but does not
-    // bundle it. A library module is not allowed to package a local .aar into
-    // its own .aar -- the classes would be silently dropped. The SDK is added
-    // to the APP module by the workflow instead, where local .aar files are
-    // supported, and it is present at runtime from there.
+    // compileOnly: compile against the SDK, do not embed it in this library.
+    // The GitHub workflow explodes the AAR into android/app/libs so the app
+    // module actually ships MobiiotAPI / CsPrinter (Capacitor's default
+    // fileTree only picks up *.jar, so copying the .aar alone was a no-op).
+    compileOnly fileTree(dir: 'libs', include: ['*.aar', '*.jar'])
     compileOnly fileTree(dir: '../../floatpos-printer/android/libs', include: ['*.aar', '*.jar'])
 }

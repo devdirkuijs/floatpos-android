@@ -1,17 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- The MobiIoT print service is a separate app on the device. Android 11+
-         hides other packages unless they are declared here, and without this
-         MobiiotAPI.init() binds to nothing and the printer silently does not
-         exist. -->
+    <!--
+      Android 11+ hides other apps. The MobiPrint 5 head is two SageReal
+      system services, not a class inside this APK. Wrong action names here
+      make queryIntentServices return 0 matches; the SDK then NPEs inside
+      MobiiotAPI.init() or logs "service printer is KO" and prints nothing.
+    -->
     <queries>
         <package android:name="com.sagereal.printer" />
         <package android:name="com.mobiwire.printraw" />
         <intent>
-            <action android:name="com.sagereal.printer.PrinterInterface" />
+            <action android:name="sagereal.intent.action.START_PRINTER_SERVICE_AIDL" />
         </intent>
         <intent>
-            <action android:name="com.mobiwire.printraw.PrintIOInterface" />
+            <action android:name="sagereal.intent.action.CONN_PRINTIO_SERVICE_AIDL" />
         </intent>
     </queries>
 </manifest>
