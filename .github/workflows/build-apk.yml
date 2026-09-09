@@ -74,23 +74,8 @@ jobs:
           ls -la android/app/libs/
           GRADLE=android/app/build.gradle
           if [ -f "$GRADLE" ]; then
-            python3 - <<'PY'
-from pathlib import Path
-p = Path("android/app/build.gradle")
-text = p.read_text()
-old = "implementation fileTree(include: ['*.jar'], dir: 'libs')"
-new = "implementation fileTree(include: ['*.jar', '*.aar'], dir: 'libs')"
-if old in text:
-    p.write_text(text.replace(old, new, 1))
-    print("patched app/build.gradle fileTree to include AARs")
-elif "fileTree" in text:
-    print("WARNING: unexpected fileTree in app/build.gradle")
-    for i, line in enumerate(text.splitlines(), 1):
-        if "fileTree" in line:
-            print(f"  {i}: {line}")
-else:
-    print("WARNING: no fileTree found in app/build.gradle")
-PY
+            sed -i "s/include: \['\*.jar'\]/include: ['*.jar', '*.aar']/" "$GRADLE"
+            echo "patched app/build.gradle fileTree to include AARs"
           else
             echo "ERROR: $GRADLE missing after cap add"
             exit 1
