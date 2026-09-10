@@ -2,11 +2,13 @@ package za.co.floatpos.printer;
 
 import android.util.Base64;
 import android.util.Log;
+import android.webkit.WebView;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.WebViewListener;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import com.mobiiot.sdk.MobiiotAPI;
@@ -29,6 +31,11 @@ import com.mobiiot.sdk.utils.ServiceUtilIOPrint;
  *
  * Wait for the bind on this plugin thread (not the main thread) so
  * onServiceConnected can run.
+ *
+ * The live till (floatpos.co.za) never calls this plugin — it only
+ * tries Web Bluetooth then iframe window.print(). After the page
+ * loads we wrap window._btTryPrint so the same ESC/POS bytes go
+ * through printESCPOS() on the built-in head.
  */
 @CapacitorPlugin(name = "FloatPrinter")
 public class FloatPrinterPlugin extends Plugin {
@@ -44,13 +51,13 @@ public class FloatPrinterPlugin extends Plugin {
         try {
             Class.forName("com.mobiiot.sdk.MobiiotAPI");
             sdkLoaded = true;
+            bindSdk();
         } catch (Throwable t) {
             sdkLoaded = false;
             initError = "MobiIoT SDK missing from APK (" + t.getClass().getSimpleName() + ")";
             Log.e(TAG, initError, t);
-            return;
         }
-        bindSdk();
+        installPrintHook();
     }
 
     @PluginMethod
@@ -271,4 +278,71 @@ public class FloatPrinterPlugin extends Plugin {
     private interface Ready {
         boolean ok();
     }
+
+    /**
+     * The hosted till never imports FloatPrinter. Wrap its global
+     * {@code _btTryPrint} after each page load so receipts, job cards,
+     * laybys and work orders hit PrintIO instead of Bluetooth / HTML.
+     */
+    private void installPrintHook() {
+        try {
+            getBridge().addWebViewListener(new WebViewListener() {
+                @Override
+                public void onPageLoaded(WebView webView) {
+                    webView.post(() -> webView.evaluateJavascript(HOOK_JS, null));
+                }
+            });
+        } catch (Throwable t) {
+            Log.e(TAG, "could not install print hook", t);
+        }
+    }
+
+    // Token __floatPrinterHook is grepped by CI to prove this JS shipped.
+    private static final String HOOK_JS = """
+        (function(){
+          if (window.__floatPrinterHookPending) return;
+          window.__floatPrinterHookPending = true;
+          try { if (!localStorage.getItem('ld_bt_width')) localStorage.setItem('ld_bt_width','58'); } catch (e) {}
+          function b64(u8){
+            var s = '', i, c = 0x8000;
+            u8 = u8 instanceof Uint8Array ? u8 : new Uint8Array(u8);
+            for (i = 0; i < u8.length; i += c) s += String.fromCharCode.apply(null, u8.subarray(i, i + c));
+            return btoa(s);
+          }
+          function plugin(){
+            try { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FloatPrinter; }
+            catch (e) { return null; }
+          }
+          async function send(builder){
+            var fp = plugin();
+            if (!fp || typeof fp.print !== 'function') return false;
+            var avail = await fp.isAvailable();
+            if (!avail || !avail.available) return false;
+            var raw = builder && typeof builder.build === 'function' ? builder.build() : builder;
+            if (!(raw instanceof Uint8Array) || !raw.length) return false;
+            var r = await fp.print({ data: b64(raw) });
+            return !!(r && r.ok);
+          }
+          function wrap(){
+            var orig = window._btTryPrint;
+            if (typeof orig !== 'function' || orig.__fpWrapped) return typeof orig === 'function';
+            var wrapped = async function(builder){
+              try { if (await send(builder)) return true; }
+              catch (e) { console.warn('[FloatPrinter] hook', e && e.message); }
+              try { return await orig.apply(this, arguments); }
+              catch (e) { return false; }
+            };
+            wrapped.__fpWrapped = true;
+            window._btTryPrint = wrapped;
+            console.log('[FloatPrinter] hooked _btTryPrint');
+            return true;
+          }
+          if (wrap()) return;
+          var n = 0;
+          var t = setInterval(function(){
+            n += 1;
+            if (wrap() || n > 80) clearInterval(t);
+          }, 250);
+        })();
+        """;
 }

@@ -160,6 +160,7 @@ jobs:
           echo "$STRINGS" | grep -q "MobiiotAPI" && echo "OK: MobiiotAPI" || { echo "MISSING: MobiiotAPI (SDK not in APK)"; fail=1; }
           echo "$STRINGS" | grep -q "printESCPOS" && echo "OK: printESCPOS" || { echo "MISSING: printESCPOS"; fail=1; }
           echo "$STRINGS" | grep -q "PrintIOInterface" && echo "OK: PrintIOInterface" || { echo "MISSING: PrintIOInterface"; fail=1; }
+          echo "$STRINGS" | grep -q "__floatPrinterHook" && echo "OK: __floatPrinterHook" || { echo "MISSING: __floatPrinterHook (till never calls FloatPrinter without this hook)"; fail=1; }
           if [ "$fail" -ne 0 ]; then
             echo "ERROR: printer runtime is incomplete. Do not ship this build."
             exit 1

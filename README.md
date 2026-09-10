@@ -38,6 +38,13 @@ Three bugs in that path meant the till never moved paper:
 Receipts use **PrintIO** (`transmitNew`), not SageReal `printText`. A successful
 `printText` self-test does not prove ESC/POS receipts will print.
 
+4. **The till never called the plugin.** https://floatpos.co.za builds ESC/POS
+   for Web Bluetooth (`_btTryPrint`) and otherwise uses an HTML iframe /
+   `window.print()`. It does not reference `FloatPrinter`. A correct APK was
+   still silent because nothing invoked it. The plugin now wraps
+   `window._btTryPrint` after each page load so the same receipt bytes go to
+   the built-in head. The hosted app is also patched to call the plugin first.
+
 ---
 
 ## Build the APK
